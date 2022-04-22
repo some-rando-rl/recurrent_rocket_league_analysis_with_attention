@@ -14,6 +14,7 @@ from rlgym.utils import math
 from rlgym.utils.common_values import ORANGE_TEAM, BLUE_TEAM, BOOST_LOCATIONS
 from rlgym.utils.gamestates import GameState, PhysicsObject, PlayerData
 import torch
+import pickle
 
 boost_locations = np.array(BOOST_LOCATIONS)  # Need ndarray for speed
 
@@ -266,20 +267,25 @@ def get_times_to_goals(replay):
 
 def convert_replays_to_inputs(replays_directory: str):
     for replay_dir in os.listdir(replays_directory):
+        bindex = 0
         replay_string = p_join(replays_directory, replay_dir, replay_dir + ".replay")
         replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
         goals_teams = [goal.player_team for goal in replay.game.goals]
         goals_frames = [goal.frame_number for goal in replay.game.goals]
         print(goals_teams, goals_frames)
-        converted_replay = convert_replay(replay, include_frame=False)
-        inputs = []
-        labels = []
+        converted_replay = convert_replay(replay, include_frame=True)
+        bins = [{"labels":list(),"inputs":list()} for i in range(len(goals_teams))]
         for gs, actions, frame in converted_replay:
             if frame > goals_frames[-1]:
-                continue
-            labels.append(goals_teams[binary_search(goals_frames, frame)])
-            inputs.append(game_state_to_input(gs))
-
+                break  # we are after the last goal, frames should be in chronological order, no need to continue here
+            goal_index = binary_search(goals_frames, frame)
+            bins[goal_index]["labels"].append(goals_teams[goal_index])
+            bins[goal_index]["inputs"].append(game_state_to_input(gs))
+        for bin in bins:
+            assert len(bin["labels"]) == len(bin["inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
+            with open(f"bins/{replay_string}/{str(bindex)}", "wb") as f:
+                pickle.dump(bin, f)
+        print(f"replay: {replay_string} done")
 
 def game_state_to_input(game_state: GameState):
     b_pos = game_state.ball.position
