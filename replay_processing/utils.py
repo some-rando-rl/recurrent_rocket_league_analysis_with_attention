@@ -274,7 +274,7 @@ def convert_replays_to_inputs(replays_directory: str):
         goals_frames = [goal.frame_number for goal in replay.game.goals]
         print(goals_teams, goals_frames)
         converted_replay = convert_replay(replay, include_frame=True)
-        bins = [{"labels":list(),"inputs":list()} for i in range(len(goals_teams))]
+        bins = [{"labels": list(), "inputs": list()} for i in range(len(goals_teams))]
         for gs, actions, frame in converted_replay:
             if frame > goals_frames[-1]:
                 break  # we are after the last goal, frames should be in chronological order, no need to continue here
@@ -282,10 +282,16 @@ def convert_replays_to_inputs(replays_directory: str):
             bins[goal_index]["labels"].append(goals_teams[goal_index])
             bins[goal_index]["inputs"].append(game_state_to_input(gs))
         for bin in bins:
-            assert len(bin["labels"]) == len(bin["inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
-            with open(f"bins/{replay_string}/{str(bindex)}", "wb") as f:
+            assert len(bin["labels"]) == len(bin[
+                                                 "inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
+
+            if not os.path.exists(f"bins/{replay_dir}"):
+                os.makedirs(f"bins/{replay_dir}")
+
+            with open(f"bins/{replay_dir}/{str(bindex)}", "wb") as f:
                 pickle.dump(bin, f)
-        print(f"replay: {replay_string} done")
+        print(f"replay: {replay_dir} done")
+
 
 def game_state_to_input(game_state: GameState):
     b_pos = game_state.ball.position
