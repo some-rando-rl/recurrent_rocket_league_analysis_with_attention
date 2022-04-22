@@ -267,7 +267,6 @@ def get_times_to_goals(replay):
 
 def convert_replays_to_inputs(replays_directory: str):
     for replay_dir in os.listdir(replays_directory):
-        bindex = 0
         replay_string = p_join(replays_directory, replay_dir, replay_dir + ".replay")
         replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
         goals_teams = [goal.player_team for goal in replay.game.goals]
@@ -281,14 +280,14 @@ def convert_replays_to_inputs(replays_directory: str):
             goal_index = binary_search(goals_frames, frame)
             bins[goal_index]["labels"].append(goals_teams[goal_index])
             bins[goal_index]["inputs"].append(game_state_to_input(gs))
-        for bin in bins:
+        for bin_i, bin in enumerate(bins):
             assert len(bin["labels"]) == len(bin[
                                                  "inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
 
             if not os.path.exists(f"bins/{replay_dir}"):
                 os.makedirs(f"bins/{replay_dir}")
 
-            with open(f"bins/{replay_dir}/{str(bindex)}", "wb") as f:
+            with open(f"bins/{replay_dir}/{str(bin_i)}", "wb") as f:
                 pickle.dump(bin, f)
         print(f"replay: {replay_dir} done")
 
