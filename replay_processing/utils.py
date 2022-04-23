@@ -346,14 +346,14 @@ def read():
         a = pickle.load(f)
     print(len(a["inputs"][0]), type(a["labels"][0]))
 
-def get_all_bins(bins_path):
+def get_all_bins(bins_path, n_batches):
     all_bins = []
     for replay in os.listdir(bins_path):
         for bin in os.listdir(p_join(bins_path, replay)):
             all_bins.append(p_join(bins_path, replay, bin))
     arr = np.asarray(all_bins)
     np.random.shuffle(arr)
-    arr = np.array_split(arr,900)
+    arr = np.array_split(arr,n_batches)
     return arr
 
 def get_batch(files):
