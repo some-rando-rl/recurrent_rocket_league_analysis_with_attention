@@ -267,29 +267,46 @@ def get_times_to_goals(replay):
 
 def convert_replays_to_inputs(replays_directory: str):
     for replay_dir in os.listdir(replays_directory):
+        if replay_dir in os.listdir("bins"):  # saves some time
+            continue
         replay_string = p_join(replays_directory, replay_dir, replay_dir + ".replay")
-        replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
+        try:
+            replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
+        except:
+            print(f"Failed to analyze replay: {replay_dir}")
+            continue
         goals_teams = [goal.player_team for goal in replay.game.goals]
         goals_frames = [goal.frame_number for goal in replay.game.goals]
         print(goals_teams, goals_frames)
+        if len(goals_frames) == 0:
+            continue
         converted_replay = convert_replay(replay, include_frame=True)
-        bins = [{"labels": list(), "inputs": list()} for i in range(len(goals_teams))]
-        for gs, actions, frame in converted_replay:
-            if frame > goals_frames[-1]:
-                break  # we are after the last goal, frames should be in chronological order, no need to continue here
-            goal_index = binary_search(goals_frames, frame)
-            bins[goal_index]["labels"].append(goals_teams[goal_index])
-            bins[goal_index]["inputs"].append(game_state_to_input(gs))
-        for bin_i, bin in enumerate(bins):
-            assert len(bin["labels"]) == len(bin[
-                                                 "inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
+        bins = [{"labels": list(), "inputs": list()} for _ in range(len(goals_teams))]
+        try:
+            for gs, actions, frame in converted_replay:
+                if frame > goals_frames[-1]:
+                    break  # we are after the last goal, frames should be in chronological order, no need to continue here
+                goal_index = binary_search(goals_frames, frame)
+                bins[goal_index]["labels"].append(goals_teams[goal_index])
+                bins[goal_index]["inputs"].append(game_state_to_input(gs))
+            for bin_i, bin in enumerate(bins):
+                assert len(bin["labels"]) == len(bin[
+                                                     "inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
 
-            if not os.path.exists(f"bins/{replay_dir}"):
-                os.makedirs(f"bins/{replay_dir}")
+                if not os.path.exists(f"bins/{replay_dir}"):
+                    os.makedirs(f"bins/{replay_dir}")
 
-            with open(f"bins/{replay_dir}/{str(bin_i)}", "wb") as f:
-                pickle.dump(bin, f)
-        print(f"replay: {replay_dir} done")
+                with open(f"bins/{replay_dir}/{str(bin_i)}", "wb") as f:
+                    pickle.dump(bin, f)
+            print(f"replay: {replay_dir} done")
+        except KeyError:
+            print(f"Key Error in replay: {replay_dir}")
+            continue
+        except ValueError:
+            print(f"Value error in replay: {replay_dir}")
+            continue
+
+
 
 
 def game_state_to_input(game_state: GameState):
@@ -298,7 +315,7 @@ def game_state_to_input(game_state: GameState):
     b_ang = game_state.ball.angular_velocity
     ball = np.concatenate([b_pos, b_vel, b_ang])
     players = []
-    empty_player = np.zeros(15 * (4 - (len(game_state.players) // 2)))
+    empty_player = np.zeros(15 * (3 - (len(game_state.players) // 2)))
     for player in game_state.players[:len(game_state.players) // 2]:
         player_info = np.asarray([player.is_demoed,
                                   player.ball_touched,
@@ -319,9 +336,39 @@ def game_state_to_input(game_state: GameState):
         p_forward = player.car_data.forward()
         players.append(np.concatenate([player_info, p_pos, p_vel, p_ang, p_forward]))
     players.append(empty_player)
-    result = np.concatenate([ball, np.concatenate(players)])
+    boosts = game_state.boost_pads
+    result = np.concatenate([ball, np.concatenate(players), boosts])
     return torch.tensor(result, dtype=torch.float32)
 
 
+def read():
+    with open("bins/012938ce-d907-4710-a6e0-e613686b6727/0", "rb") as f:
+        a = pickle.load(f)
+    print(len(a["inputs"][0]), type(a["labels"][0]))
+
+def get_all_bins(bins_path):
+    all_bins = []
+    for replay in os.listdir(bins_path):
+        for bin in os.listdir(p_join(bins_path, replay)):
+            all_bins.append(p_join(bins_path, replay, bin))
+    arr = np.asarray(all_bins)
+    np.random.shuffle(arr)
+    arr = np.array_split(arr,900)
+    return arr
+
+def get_batch(files):
+    inputs = []
+    labels = []
+    for file in files:
+        with open(file, "rb") as f:
+            a = pickle.load(f)
+        try:
+            inputs.append(torch.stack(a["inputs"]))
+            labels.append(torch.tensor(a["labels"]))
+        except:
+            continue
+    return torch.cat(inputs), torch.cat(labels)
+
 if __name__ == '__main__':
-    convert_replays_to_inputs(p_join("replays/new_location/triples_test_group"))
+    print(len(get_batch(get_all_bins("bins")[0])[1]))
+    #convert_replays_to_inputs(p_join("replays/new_location/RankedDuels"))
