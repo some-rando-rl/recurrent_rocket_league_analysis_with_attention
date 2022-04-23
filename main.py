@@ -5,7 +5,7 @@ from replay_processing.utils import get_all_bins, get_batch
 from torch import nn, optim
 
 
-def train_loop(model, loss_fn, optimizer, epochs, save_dir, device="cuda", save_frequency=50):
+def train_loop(model, loss_fn, optimizer, save_dir, epochs=1, device=torch.device("cpu"), save_frequency=50):
     model.to(device)
     for epoch in range(epochs):
         bins = get_all_bins("replay_processing/bins")
@@ -30,6 +30,6 @@ def train_loop(model, loss_fn, optimizer, epochs, save_dir, device="cuda", save_
 
 if __name__ == '__main__':
     model = NextGoalPredictor()
-    optimizer = optim.Adam(model.parameters())
+    optimizer = optim.Adam(model.parameters(), lr=3e-4)
     loss_funciton = nn.CrossEntropyLoss(reduction="mean")
-    train_loop(model, loss_funciton, optimizer, torch.device("cuda"), epochs=2)
+    train_loop(model, loss_funciton, optimizer,"models",epochs=2, device=torch.device("cuda"))
