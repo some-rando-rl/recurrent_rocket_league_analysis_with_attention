@@ -1,16 +1,31 @@
-# This is a sample Python script.
+import torch
 
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
+from model import NextGoalPredictor
+from replay_processing.utils import get_all_bins, get_batch
+from torch import nn, optim
 
+def train_loop(model, loss_fn, optimizer, device, epochs):
+    model.to(device)
+    for epoch in range(epochs):
+        bins = get_all_bins("replay_processing/bins")
+        epoch_loss = 0
+        for i, file_names in enumerate(bins):
+            batch_arr = get_batch(file_names)
+            inputs, labels = batch_arr[0].to(device), batch_arr[1].to(device)
+            # Compute prediction and loss
+            output = model(inputs)
+            loss = loss_fn(output, labels)
 
-def print_hi(name):
-    # Use a breakpoint in the code line below to debug your script.
-    print(f'Hi, {name}')  # Press Ctrl+F8 to toggle the breakpoint.
+            # Backpropagation
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            epoch_loss+=loss.item()
+            print(f"Batch:{i}; Len batch: {len(inputs)}; Loss:{loss.item()}")
+        print(f"Epoch {epoch} done with loss of {epoch_loss}")
 
-
-# Press the green button in the gutter to run the script.
 if __name__ == '__main__':
-    print_hi('PyCharm')
-
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    model = NextGoalPredictor()
+    optimizer = optim.Adam(model.parameters())
+    loss_funciton = nn.CrossEntropyLoss(reduction="mean")
+    train_loop(model, loss_funciton, optimizer, torch.device("cuda"), epochs=2)
