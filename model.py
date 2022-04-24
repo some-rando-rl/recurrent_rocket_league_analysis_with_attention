@@ -11,6 +11,9 @@ class NextGoalPredictor(nn.Module):
         self.linear3 = nn.Linear(500, 500)
         self.linear4 = nn.Linear(500, 500)
         self.linear5 = nn.Linear(500, 500)
+        self.linear6 = nn.Linear(500, 500)
+        self.linear7 = nn.Linear(500, 500)
+        self.linear8 = nn.Linear(500, 500)
         self.output_layer = nn.Linear(500,2)
 
     def forward(self, x):
@@ -20,4 +23,7 @@ class NextGoalPredictor(nn.Module):
         x = F.relu(self.linear3(x))
         x = F.relu(self.linear4(x))
         x = F.relu(self.linear5(x))
+        x = F.relu(self.linear6(x))
+        x = F.relu(self.linear7(x))
+        x = F.relu(self.linear8(x))
         return self.output_layer(x)

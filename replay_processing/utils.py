@@ -370,5 +370,5 @@ def get_batch(files):
     return torch.cat(inputs), torch.cat(labels)
 
 if __name__ == '__main__':
-    print(len(get_batch(get_all_bins("bins")[0])[1]))
+    print(len(get_batch(get_all_bins("bins",900)[0])[1]))
     #convert_replays_to_inputs(p_join("replays/new_location/RankedDuels"))
