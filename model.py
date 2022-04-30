@@ -6,7 +6,7 @@ class NextGoalPredictor(nn.Module):
         super().__init__()
         self.activation = nn.ReLU()
         self.input_layer = nn.Linear(133, 500)
-        self.linear1 = nn.Linear(500,500)
+        self.linear1 = nn.Linear(500, 500)
         self.linear2 = nn.Linear(500, 500)
         self.linear3 = nn.Linear(500, 500)
         self.linear4 = nn.Linear(500, 500)
@@ -14,7 +14,7 @@ class NextGoalPredictor(nn.Module):
         self.linear6 = nn.Linear(500, 500)
         self.linear7 = nn.Linear(500, 500)
         self.linear8 = nn.Linear(500, 500)
-        self.output_layer = nn.Linear(500,2)
+        self.output_layer = nn.Linear(500, 1)
 
     def forward(self, x):
         x = F.relu(self.input_layer(x))

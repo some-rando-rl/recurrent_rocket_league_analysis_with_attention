@@ -1,9 +1,15 @@
 import os
 from os.path import join as p_join
+from os.path import split as p_split
+
+from functools import partial
+
+from multiprocessing import Pool
 
 import logging
 from collections import Counter
-from typing import Union
+from posixpath import split
+from typing import Union, Tuple
 
 import carball as cb
 import numpy as np
@@ -236,6 +242,8 @@ def binary_search(arr, x):
 
 def pair_jsons_with_replays():
     for game_mode in os.listdir("replays"):
+        if game_mode == "new_location":
+            continue
         pairs = {}
         for file in os.listdir(p_join("replays", game_mode)):
             name, extension = file.split(".")
@@ -253,6 +261,66 @@ def pair_jsons_with_replays():
                        p_join(new_pair_path, pairs[pair]["replay"]))
 
 
+def split_dataset_into_functional_sets(
+        training_ratio=0.5,
+        test_ratio=0.25,
+        validation_ratio=0.25,
+        basedir=p_join("replays", "new_location"),
+        bindir="bins",
+        outdir="data"
+    ):
+    if training_ratio > 0:
+        os.makedirs(p_join(outdir, "training"), exist_ok=True)
+    if test_ratio > 0:
+        os.makedirs(p_join(outdir, "test"), exist_ok=True)
+    if validation_ratio > 0:
+        os.makedirs(p_join(outdir, "validation"), exist_ok=True)
+
+    binfiles = []
+    
+    for root, _, files in os.walk(bindir):
+        if root == bindir:
+            continue
+        for file in files:
+            guid = p_split(root)[-1]
+            binfiles.append((guid, file))
+
+    sources = {}
+    dests = {}
+    binfiles = np.asarray(binfiles)
+
+    training_count, test_count, _ = [round(a * len(binfiles)) for a in [training_ratio, test_ratio, validation_ratio]]
+    np.random.shuffle(binfiles)
+
+    # might not produce an absolutely perfect split due to rounding error, but close enough
+    bins = {
+        "training": binfiles[:training_count],
+        "test": binfiles[training_count:training_count+test_count],
+        "validation": binfiles[training_count+test_count:]
+    }
+
+    import json
+    print("\tTotal bins: %s" % len(binfiles))
+    print("\tTraining bins: %s" % len(bins["training"]))
+    print("\tTest bins: %s" % len(bins["test"]))
+    print("\tValidation bins: %s" % len(bins["validation"]))
+    print("")
+
+    for function in ["training", "test", "validation"]:
+        for guid, bin in bins[function]:
+            source = p_join(bindir, guid, bin)
+            dest = p_join(outdir, function, f"{guid}_{bin}")
+            if sources.get(source, False):
+                print(f"Source {source} already used!")
+                continue
+            if dests.get(dest, False):
+                print(f"Dest {dest} already used!")
+                continue
+            sources[source] = True
+            dests[dest] = True
+            #print(f"Moving {source} to {dest}")
+            os.replace(source, dest)
+
 def get_times_to_goals(replay):
     goals = [goal.frame_number for goal in replay.game.goals]
 
@@ -265,48 +333,46 @@ def get_times_to_goals(replay):
     return times
 
 
+def convert_replay_inner_loop(replays_directory, replay_dir):
+    replay_string = p_join(replays_directory, replay_dir, replay_dir + ".replay")
+    try:
+        replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
+    except:
+        print(f"Failed to analyze replay: {replay_string}")
+        return
+    print(f"Replay analysis succeeded: {replay_string}")
+    goals_teams = [goal.player_team for goal in replay.game.goals]
+    goals_frames = [goal.frame_number for goal in replay.game.goals]
+    print(goals_teams, goals_frames)
+    if len(goals_frames) == 0:
+        return
+    converted_replay = convert_replay(replay, include_frame=True)
+    bins = [{"labels": list(), "inputs": list()} for _ in range(len(goals_teams))]
+    try:
+        for gs, actions, frame in converted_replay:
+            if frame > goals_frames[-1]:
+                break  # we are after the last goal, frames should be in chronological order, no need to continue here
+            goal_index = binary_search(goals_frames, frame)
+            bins[goal_index]["labels"].append(goals_teams[goal_index])
+            bins[goal_index]["inputs"].append(game_state_to_input(gs))
+        for bin_i, bin in enumerate(bins):
+            assert len(bin["labels"]) == len(bin["inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
+
+            if not os.path.exists(f"bins/{replay_dir}"):
+                os.makedirs(f"bins/{replay_dir}")
+
+            with open(f"bins/{replay_dir}/{str(bin_i)}", "wb") as f:
+                pickle.dump(bin, f)
+        print(f"replay: {replay_dir} done")
+    except KeyError:
+        print(f"Key Error in replay: {replay_dir}")
+    except ValueError:
+        print(f"Value error in replay: {replay_dir}")
+
 def convert_replays_to_inputs(replays_directory: str):
-    for replay_dir in os.listdir(replays_directory):
-        if replay_dir in os.listdir("bins"):  # saves some time
-            continue
-        replay_string = p_join(replays_directory, replay_dir, replay_dir + ".replay")
-        try:
-            replay = cb.analyze_replay_file(replay_string, logging_level=logging.CRITICAL)
-        except:
-            print(f"Failed to analyze replay: {replay_dir}")
-            continue
-        goals_teams = [goal.player_team for goal in replay.game.goals]
-        goals_frames = [goal.frame_number for goal in replay.game.goals]
-        print(goals_teams, goals_frames)
-        if len(goals_frames) == 0:
-            continue
-        converted_replay = convert_replay(replay, include_frame=True)
-        bins = [{"labels": list(), "inputs": list()} for _ in range(len(goals_teams))]
-        try:
-            for gs, actions, frame in converted_replay:
-                if frame > goals_frames[-1]:
-                    break  # we are after the last goal, frames should be in chronological order, no need to continue here
-                goal_index = binary_search(goals_frames, frame)
-                bins[goal_index]["labels"].append(goals_teams[goal_index])
-                bins[goal_index]["inputs"].append(game_state_to_input(gs))
-            for bin_i, bin in enumerate(bins):
-                assert len(bin["labels"]) == len(bin[
-                                                     "inputs"]), f"Inputs and labels in bin are not of the same size inputs length: {len(bin['inputs'])}, labels length: {len(bin['labels'])}."
-
-                if not os.path.exists(f"bins/{replay_dir}"):
-                    os.makedirs(f"bins/{replay_dir}")
-
-                with open(f"bins/{replay_dir}/{str(bin_i)}", "wb") as f:
-                    pickle.dump(bin, f)
-            print(f"replay: {replay_dir} done")
-        except KeyError:
-            print(f"Key Error in replay: {replay_dir}")
-            continue
-        except ValueError:
-            print(f"Value error in replay: {replay_dir}")
-            continue
-
-
+    bins = { id: True for id in os.listdir("bins")}
+    pool = Pool(processes=28)
+    pool.map(partial(convert_replay_inner_loop, replays_directory), (d for d in os.listdir(replays_directory) if not bins.get(d, False)))
 
 
 def game_state_to_input(game_state: GameState):
@@ -341,8 +407,8 @@ def game_state_to_input(game_state: GameState):
     return torch.tensor(result, dtype=torch.float32)
 
 
-def read():
-    with open("bins/012938ce-d907-4710-a6e0-e613686b6727/0", "rb") as f:
+def read(path):
+    with open(path, "rb") as f:
         a = pickle.load(f)
     print(len(a["inputs"][0]), type(a["labels"][0]))
 
@@ -369,6 +435,32 @@ def get_batch(files):
             continue
     return torch.cat(inputs), torch.cat(labels)
 
+def check_bin(path):
+    with open(path, "rb") as f:
+        bin = pickle.load(f)
+    if len(bin["inputs"]) == 0 or len(bin["inputs"][0]) == 0:
+        print(f"bin {path} has zero length inputs")
+
+def check_bins(datadir="data"):
+    pool = Pool(processes=28)
+    for function in "training", "validation", "test":
+        pool.map(check_bin, [p_join(datadir, function, bin_name) for bin_name in os.listdir(p_join(datadir, function))])
+
+
 if __name__ == '__main__':
-    print(len(get_batch(get_all_bins("bins",900)[0])[1]))
+    # setting up replay dirs
+    #print("Pairing jsons with replays")
+    #pair_jsons_with_replays();
+
+    #print(len(get_batch(get_all_bins("bins",900)[0])[1]))
+    #print("Converting duels")
     #convert_replays_to_inputs(p_join("replays/new_location/RankedDuels"))
+
+    #print("Converting doubles")
+    #convert_replays_to_inputs(p_join("replays/new_location/RankedDoubles"))
+
+    #print("Converting standard")
+    #convert_replays_to_inputs(p_join("replays/new_location/RankedStandard"))
+
+    #split_dataset_into_functional_sets()
+    check_bins()
