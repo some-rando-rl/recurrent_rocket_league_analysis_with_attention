@@ -26,4 +26,4 @@ class NextGoalPredictor(nn.Module):
         x = F.relu(self.linear6(x))
         x = F.relu(self.linear7(x))
         x = F.relu(self.linear8(x))
-        return self.output_layer(x)
+        return F.sigmoid(self.output_layer(x))

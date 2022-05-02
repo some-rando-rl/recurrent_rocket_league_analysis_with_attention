@@ -1,0 +1,8 @@
+carball>=0.7.5
+wandb>=0.9.6
+gym>=0.21.0
+numpy>=1.22.3
+rlgym>=1.0.1
+
+--find-links https://download.pytorch.org/whl/torch_stable.html
+torch>=1.11.0+cu115

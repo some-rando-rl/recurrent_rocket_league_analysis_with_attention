@@ -1,0 +1,11 @@
+.venv
+.python-version
+*.pyc
+wandb
+logs
+models
+*_backup
+bins
+*_bins
+replays
+minibins*

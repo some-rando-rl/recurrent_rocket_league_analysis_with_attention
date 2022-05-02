@@ -7,13 +7,15 @@ from torch.utils.data import DataLoader
 from torch.nn.utils.rnn import pad_sequence
 from os.path import join as p_join
 
+#run_id = "10tvfyjw"
+run_id = None
 config = {
     "seed": 0,
     "batch_size": 10,
-    "lr": 5e-5,
-    "save_frequency": 100,
-    "eval_frequency": 100,
-    "device": "cuda"
+    #"lr": 1e-6,
+    "save_frequency": 3,
+    "eval_frequency": 3,
+    "device": "cuda",
 }
 
 torch.manual_seed(config["seed"])
@@ -25,7 +27,7 @@ def pad_collate(batch):
 
     return xx_pad, yy_pad
 
-def train_loop(model, loss_fn, optimizer, save_dir, epochs=1, batch_size=config["batch_size"], device=torch.device(config["device"]), save_frequency=config["save_frequency"], eval_frequency=config["eval_frequency"]):
+def train_loop(model, save_dir, epochs=1, batch_size=config["batch_size"], device=torch.device(config["device"]), save_frequency=config["save_frequency"], eval_frequency=config["eval_frequency"]):
     dataloader = DataLoader(
         RocketLeagueReplayDataset(),
         batch_size=batch_size,
@@ -34,18 +36,31 @@ def train_loop(model, loss_fn, optimizer, save_dir, epochs=1, batch_size=config[
         collate_fn=pad_collate
     )
 
+    loss_fn = nn.CrossEntropyLoss()
+
     model.to(device)
     parameter_vector = nn.utils.parameters_to_vector(model.parameters())
 
     print(f"Training model with {len(parameter_vector)} params")
 
     for epoch in range(epochs):
+        if epoch < 50:
+            lr = 5e-5
+        if 50 <= epoch < 250:
+            lr = 1e-5
+        if 250 <= epoch < 500:
+            lr = 5e-6
+        if 500 <= epoch:
+            lr = 1e-6
+
+        optimizer = optim.Adam(model.parameters(), lr)
         epoch_loss = 0
 
         for i, data in enumerate(dataloader):
             inputs, labels = data
             inputs = inputs.to(device)
-            labels = torch.tensor([[a[0]] for a in labels]).to(device)
+            labels = labels.to(device)
+            #labels = torch.tensor([[a[0]] for a in labels]).to(device)
 
             # zero gradients for every batch
             optimizer.zero_grad()
@@ -93,34 +108,38 @@ def validation_run(model, loss_fn, batch_size, device, limit=50):
         for i, data in enumerate(dataloader):
             inputs, labels = data
             inputs = inputs.to(device)
-            labels = torch.tensor([[a[0]] for a in labels]).to(device)
+            labels = labels.to(device)
             # Compute prediction and loss
             output = model(inputs)
             validation_loss += loss_fn(output, labels).item()
-            correct += (output.argmax(1) == labels).type(torch.float).sum().item()
-            all += len(labels)
+
+            correct += (((output > 0.5).float() - labels) == 0).float().sum()
+
+            #correct += (output > 0.5).type(torch.float) == labels.type(torch.float).sum().item()
+
+            all += labels.numel()
             if limit and i >= limit:
                 break
     return validation_loss, correct / all
 
 
 def main():
-    wandb.init(project="goal-prediction-carrot", entity="some-rando-rl", config=config)
+    wandb.init(
+        project="goal-prediction-carrot",
+        entity="some_rando_rl",
+        config=config,
+        id=run_id
+    )
     model = NextGoalPredictor()
 
     #load = input("Load [Y/n]: ").lower()
     #if load == "l" or load == "":
-    #    model.load_state_dict(torch.load("models/model2_2_499"))
-
-    optimizer = optim.Adam(model.parameters(), lr=5e-5)
-    loss_function = nn.CrossEntropyLoss()
+    #model.load_state_dict(torch.load("models/model_113_2.pckl"))
 
     train_loop(
         model=model,
-        loss_fn=loss_function,
-        optimizer=optimizer,
         save_dir="models",
-        epochs=10,
+        epochs=10000,
         device=torch.device("cuda")
     )
 

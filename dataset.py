@@ -1,4 +1,5 @@
 import os
+from numpy import dtype
 import torch
 import pickle
 
@@ -26,19 +27,20 @@ class RocketLeagueReplayDataset(torch.utils.data.Dataset):
         with open(filename, "rb") as f:
             contents = pickle.load(f)
 
-        input = torch.stack(contents["inputs"])
-        label = torch.tensor(contents["labels"])
+        inputs = torch.stack(contents["inputs"])
+        labels = torch.tensor(contents["labels"], dtype=torch.float32)
+        labels = labels.view(*labels.shape, 1)
 
         if self._transform:
-            input = self._transform(input)
+            inputs = self._transform(inputs)
         if self._target_transform:
-            label = self._target_transform(label)
+            labels = self._target_transform(labels)
 
-        return input, label
+        return inputs, labels
 
 if __name__ == "__main__":
     ds = RocketLeagueReplayDataset()
-    input, label = ds[0]
-    print(f"input size: {input.size()}")
-    print(f"label size: {label.size()}")
+    inputs, labels = ds[0]
+    print(f"inputs size: {inputs.size()}")
+    print(f"labels size: {labels.size()}")
     print()
